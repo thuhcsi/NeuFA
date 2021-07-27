@@ -33,3 +33,20 @@ class HDFSDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         return self.get_items([index])
+
+class HDFSCollate:
+
+    def __init__(self, device=None):
+        self.device = device
+
+    def __call__(self, batch):
+        if self.device is None:
+            return batch
+
+        for i, data in enumerate(batch):
+            for j in range(len(data)):
+                if torch.is_tensor(batch[i][j]):
+                    batch[i][j] = batch[i][j].to(self.device)
+                else:
+                    batch[i][j] = torch.from_numpy(batch[i][j]).to(self.device)
+        return batch
