@@ -1,0 +1,3 @@
+[submodule "g2p"]
+	path = g2p
+	url = https://github.com/petronny/g2p
