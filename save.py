@@ -47,7 +47,7 @@ class Save:
         options.logging = 'debug'
         enable_pretty_logging(options=options, logger=self.logger)
 
-        self.writer = SummaryWriter(self.path)
+        self.writer = SummaryWriter(os.path.join(os.environ['ARNOLD_OUTPUT'], self.name))
 
     def training_log(self, epoch, batch, step, loss):
         self.logger.info('[%s] epoch %d batch %d step %d loss %f', self.name, epoch, batch, step, loss)
