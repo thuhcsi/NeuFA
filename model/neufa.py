@@ -4,6 +4,7 @@ from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from .modules import Encoder, ReferenceEncoder, Decoder
 from .attention import BidirectionalAttention, BidirectionalAdditiveAttention
+from .position import PositionalEncoding
 
 class BidirectionalAttention(BidirectionalAttention):
 
@@ -34,6 +35,8 @@ class NeuFA_base(nn.Module):
         self.attention = BidirectionalAttention(hparams.text_encoder.output_dim, hparams.speech_encoder.output_dim, hparams.attention.dim)
         self.text_decoder = Decoder(hparams.text_decoder)
         self.speech_decoder = Decoder(hparams.speech_decoder)
+        self.positional_encoding_text = PositionalEncoding(hparams.text_encoder.output_dim)
+        self.positional_encoding_speech = PositionalEncoding(hparams.speech_encoder.output_dim)
         self.softmax = nn.Softmax(-1)
 
         self.mse = nn.MSELoss()
@@ -48,6 +51,9 @@ class NeuFA_base(nn.Module):
         mfccs = pad_sequence(mfccs, batch_first=True)
         normalized_mfccs = self.layer_normalization(mfccs)
         mfccs = self.speech_encoder(normalized_mfccs)
+
+        texts = self.positional_encoding_text(texts)
+        mfccs = self.positional_encoding_speech(mfccs)
 
         texts_at_frame, mfccs_at_text, w1, w2 = self.attention(texts, mfccs)
 

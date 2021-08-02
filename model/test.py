@@ -4,6 +4,7 @@ from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from .modules import TacotronEncoder, Tacotron2Encoder, ReferenceEncoder, Decoder
 from .attention import BidirectionalAttention, BidirectionalAdditiveAttention
+from .position import PositionalEncoding
 
 class BidirectionalAttention(BidirectionalAttention):
 
@@ -33,6 +34,7 @@ class BidirectionalAttentionTest(nn.Module):
         self.decoder1 = Decoder(hparams.text_decoder)
         self.decoder2 = Decoder(hparams.text_decoder)
         self.softmax = nn.Softmax(-1)
+        self.positional_encoding = PositionalEncoding(hparams.text_encoder.output_dim)
 
         self.cross_entrophy = torch.nn.CrossEntropyLoss()
 
@@ -40,7 +42,9 @@ class BidirectionalAttentionTest(nn.Module):
         text_lengths = [i.shape[0] for i in texts]
         texts = pad_sequence(texts, batch_first=True)
         texts1 = self.encoder1(texts, text_lengths)
+        texts1 = self.positional_encoding(texts1)
         texts2 = self.encoder2(texts, text_lengths)
+        texts2 = self.positional_encoding(texts2)
 
         text1, texts2, w1, w2 = self.attention(texts1, texts2)
 
