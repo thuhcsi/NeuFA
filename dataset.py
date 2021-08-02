@@ -31,7 +31,7 @@ def load_text(text):
     phonemes = []
     for word in words:
         phonemes += g2p.convert(word)
-    phonemes = [g2p.symbol2id[i] for i in phonemes if i in g2p.symbols]
+    phonemes = [g2p.symbol2id[i] + 1 for i in phonemes if i in g2p.symbols]
     phonemes = np.array(phonemes)
     return phonemes
 

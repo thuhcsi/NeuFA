@@ -29,7 +29,7 @@ base.max_epochs = 50000
 base.batch_size = 16
 base.learning_rate = 1e-3
 
-base.input.num_symbols = 84
+base.input.num_symbols = 84 + 1
 base.input.mfcc_dim = 39
 
 base.text_encoder.num_symbols = base.input.num_symbols
