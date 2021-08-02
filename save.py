@@ -50,7 +50,7 @@ class Save:
         self.writer = SummaryWriter(self.path)
 
     def training_log(self, epoch, batch, step, loss):
-        self.logger.info('epoch %d batch %d step %d loss %f', epoch, batch, step, loss)
+        self.logger.info('[%s] epoch %d batch %d step %d loss %f', self.name, epoch, batch, step, loss)
         self.writer.add_scalar("training loss", loss, step)
 
     def validation_log(self, epoch, step, loss):
