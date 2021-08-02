@@ -61,3 +61,5 @@ base.speech_decoder.output_dim = base.input.mfcc_dim
 test = deepcopy(base)
 test.batch_size = 64
 test.text_decoder.input_dim = base.text_encoder.output_dim
+test.text_encoder.cnn.kernel_size = 5
+test.text_encoder.cnn.num_layers = 3

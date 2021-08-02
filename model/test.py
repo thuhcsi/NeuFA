@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-from .modules import Encoder, ReferenceEncoder, Decoder
+from .modules import TacotronEncoder, Tacotron2Encoder, ReferenceEncoder, Decoder
 from .attention import BidirectionalAttention, BidirectionalAdditiveAttention
 
 class BidirectionalAttention(BidirectionalAttention):
@@ -26,8 +26,8 @@ class BidirectionalAttentionTest(nn.Module):
     def __init__(self, hparams):
         super().__init__()
 
-        self.encoder1 = Encoder(hparams.text_encoder)
-        self.encoder2 = Encoder(hparams.text_encoder)
+        self.encoder1 = Tacotron2Encoder(hparams.text_encoder)
+        self.encoder2 = Tacotron2Encoder(hparams.text_encoder)
         self.attention = BidirectionalAdditiveAttention(hparams.text_encoder.output_dim, hparams.text_encoder.output_dim, hparams.attention.dim)
         #self.attention = BidirectionalAttention(hparams.text_encoder.output_dim, hparams.text_encoder.output_dim, hparams.attention.dim)
         self.decoder1 = Decoder(hparams.text_decoder)

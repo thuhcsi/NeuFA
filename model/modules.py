@@ -128,7 +128,7 @@ class CBHG(nn.Module):
 
         return outputs
 
-class Encoder(nn.Module):
+class TacotronEncoder(nn.Module):
 
     def __init__(self, hparams):
         super().__init__()
@@ -141,6 +141,76 @@ class Encoder(nn.Module):
         x = self.prenet(x)
         x = self.cbhg(x, input_lengths)
         return x
+
+class ConvNorm(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1,
+                 padding=None, dilation=1, bias=True, w_init_gain='linear'):
+        super(ConvNorm, self).__init__()
+        if padding is None:
+            assert(kernel_size % 2 == 1)
+            padding = int(dilation * (kernel_size - 1) / 2)
+
+        self.conv = torch.nn.Conv1d(in_channels, out_channels,
+                                    kernel_size=kernel_size, stride=stride,
+                                    padding=padding, dilation=dilation,
+                                    bias=bias)
+
+        torch.nn.init.xavier_uniform_(
+            self.conv.weight, gain=torch.nn.init.calculate_gain(w_init_gain))
+
+    def forward(self, signal):
+        conv_signal = self.conv(signal)
+        return conv_signal
+
+class Tacotron2Encoder(nn.Module):
+
+    def __init__(self, hparams):
+        super().__init__()
+
+        self.embedding = nn.Embedding(hparams.num_symbols, hparams.embedding_dim)
+        convolutions = []
+        for _ in range(hparams.cnn.num_layers):
+            conv_layer = nn.Sequential(
+                ConvNorm(hparams.embedding_dim,
+                         hparams.embedding_dim,
+                         kernel_size=hparams.cnn.kernel_size, stride=1,
+                         padding=int((hparams.cnn.kernel_size - 1) / 2),
+                         dilation=1, w_init_gain='relu'),
+                nn.BatchNorm1d(hparams.embedding_dim))
+            convolutions.append(conv_layer)
+        self.convolutions = nn.ModuleList(convolutions)
+
+        self.lstm = nn.LSTM(hparams.embedding_dim,
+                            int(hparams.embedding_dim / 2), 1,
+                            batch_first=True, bidirectional=True)
+
+    def forward(self, x, input_lengths):
+        x = self.embedding(x).transpose(1, 2)
+
+        for conv in self.convolutions:
+            x = torch.nn.functional.dropout(torch.nn.functional.relu(conv(x)), 0.5, self.training)
+
+        x = x.transpose(1, 2)
+
+        x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True, enforce_sorted=False)
+
+        self.lstm.flatten_parameters()
+        outputs, _ = self.lstm(x)
+
+        outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
+
+        return outputs
+
+    def inference(self, x):
+        for conv in self.convolutions:
+            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
+
+        x = x.transpose(1, 2)
+
+        self.lstm.flatten_parameters()
+        outputs, _ = self.lstm(x)
+
+        return outputs
 
 class ReferenceEncoder(nn.Module):
 
