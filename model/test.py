@@ -30,7 +30,6 @@ class BidirectionalAttentionTest(nn.Module):
         self.encoder1 = Tacotron2Encoder(hparams.text_encoder)
         self.encoder2 = Tacotron2Encoder(hparams.text_encoder)
         self.attention = BidirectionalAdditiveAttention(hparams.text_encoder.output_dim, hparams.text_encoder.output_dim, hparams.attention.dim)
-        #self.attention = BidirectionalAttention(hparams.text_encoder.output_dim, hparams.text_encoder.output_dim, hparams.attention.dim)
         self.decoder1 = Decoder(hparams.text_decoder)
         self.decoder2 = Decoder(hparams.text_decoder)
         self.softmax = nn.Softmax(-1)
@@ -69,6 +68,12 @@ class BidirectionalAttentionTest(nn.Module):
 
         return self.cross_entrophy(p_texts1, texts) + self.cross_entrophy(p_texts2, texts)
 
+class BidirectionalAttentionTest2(BidirectionalAttentionTest):
+
+    def __init__(self, hparams):
+        super().__init__(hparams)
+        self.attention = BidirectionalAttention(hparams.text_encoder.output_dim, hparams.text_encoder.output_dim, hparams.attention.dim)
+
 if __name__ == '__main__':
     import os
     from dataset import LibriSpeech
@@ -82,7 +87,7 @@ if __name__ == '__main__':
     data_loader = HDFSLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=HDFSCollate(device), drop_last=True, num_readers=batch_size)
 
     for batch in data_loader:
-        model = BidirectionalAttentionTest(test)
+        model = BidirectionalAttentionTest2(test)
         model.to(device)
         output = model(batch[0])
         print([i.shape for i in output])

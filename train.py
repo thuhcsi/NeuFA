@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', default=0, type=int)
 parser.add_argument('--name', default=None)
 parser.add_argument('--restore_path', default=None)
-parser.add_argument('--model', required=True, choices=['base', 'test', 'proposed2', 'proposed3'])
+parser.add_argument('--model', required=True, choices=['base', 'test', 'test2', 'proposed3'])
 args = parser.parse_args()
 
 device = "cuda:%d" % args.gpu
@@ -19,12 +19,16 @@ device = "cuda:%d" % args.gpu
 if args.model == 'base':
     from model.neufa import NeuFA_base as Model
     from hparams import base as hparams
+    train_dataset = LibriSpeech('hdfs://haruna/home/byte_speech_sv/user/lijingbei/LibriSpeech/packed/LibriSpeech')
 elif args.model == 'test':
     from model.test import BidirectionalAttentionTest as Model
     from hparams import test as hparams
+    train_dataset = LibriSpeechText(os.path.expanduser('~/datasets/LibriSpeech/packed/LibriSpeech'))
+elif args.model == 'test2':
+    from model.test import BidirectionalAttentionTest2 as Model
+    from hparams import test2 as hparams
+    train_dataset = LibriSpeechText(os.path.expanduser('~/datasets/LibriSpeech/packed/LibriSpeech'))
 
-#train_dataset = LibriSpeech('hdfs://haruna/home/byte_speech_sv/user/lijingbei/LibriSpeech/packed/LibriSpeech')
-train_dataset = LibriSpeechText(os.path.expanduser('~/datasets/LibriSpeech/packed/LibriSpeech'))
 train_dataloader = HDFSLoader(train_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=HDFSCollate(device), drop_last=True, num_readers=hparams.batch_size)
 #valid_dataset = dev_data(args.input_path)
 #valid_dataloader = DataLoader(valid_dataset, batch_size=len(valid_dataset), collate_fn=Collate(device), drop_last=True)
@@ -50,7 +54,7 @@ for epoch in range(hparams.max_epochs):
         if args.model == 'base':
             predicted = model(*data)
             loss = model.loss(*predicted[:2], data[0], predicted[-1])
-        if args.model == 'test':
+        elif args.model in ['test', 'test2']:
             predicted = model(data[0])
             loss = model.loss(*predicted[:2], data[0])
         optimizer.zero_grad()
