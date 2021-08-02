@@ -15,8 +15,8 @@ class BidirectionalAttention(nn.Module):
         k1 = self.k1_layer(k1)
         k2 = self.k2_layer(k2)
         score = self.tanh(torch.bmm(k1, k2.transpose(1, 2)))
-        w1 = self.softmax(score.transpose(1, 2)).squeeze(-1)
-        w2 = self.softmax(score).squeeze(-1)
+        w1 = self.softmax(score.transpose(1, 2))
+        w2 = self.softmax(score)
         o1 = torch.bmm(w1, v1)
         o2 = torch.bmm(w2, v2)
         return o1, o2, w1, w2
@@ -34,9 +34,9 @@ class BidirectionalAdditiveAttention(nn.Module):
     def forward(self, k1, k2, v1, v2):
         k1 = self.k1_layer(k1).repeat(k2.shape[1], 1, 1, 1).permute(1,2,0,3)
         k2 = self.k2_layer(k2).repeat(k1.shape[1], 1, 1, 1).permute(1,0,2,3)
-        score = self.score_layer(self.tanh(k1 + k2))
-        w1 = self.softmax(score.transpose(1, 2)).squeeze(-1)
-        w2 = self.softmax(score).squeeze(-1)
+        score = self.score_layer(self.tanh(k1 + k2)).squeeze(-1)
+        w1 = self.softmax(score.transpose(1, 2))
+        w2 = self.softmax(score)
         o1 = torch.bmm(w1, v1)
         o2 = torch.bmm(w2, v2)
         return o1, o2, w1, w2
