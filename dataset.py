@@ -51,7 +51,7 @@ class LibriSpeechText(HDFSDataset):
         texts = self.reader.read_many(keys)
         phonemes = [load_text(i) for i in texts]
 
-        return (phonemes, )
+        return (phonemes, phonemes)
 
 class LibriSpeech(HDFSDataset):
 
@@ -77,9 +77,11 @@ class LibriSpeech(HDFSDataset):
         return (phonemes, mfccs)
 
 if __name__ == '__main__':
+    import os
 
-    dataset = LibriSpeech('hdfs://haruna/home/byte_speech_sv/user/lijingbei/LibriSpeech/packed/LibriSpeech')
-    batch_size = 2
+    #dataset = LibriSpeech('hdfs://haruna/home/byte_speech_sv/user/lijingbei/LibriSpeech/packed/LibriSpeech')
+    dataset = LibriSpeech(os.path.expanduser('~/packed/LibriSpeech'))
+    batch_size = 32
     data_loader = HDFSLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=HDFSCollate('cuda:0'), drop_last=True, num_readers=batch_size)
     for batch in data_loader:
         for _list in batch:
