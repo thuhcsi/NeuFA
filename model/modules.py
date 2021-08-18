@@ -1,6 +1,38 @@
 import torch
 from torch import nn
 
+class GumbelSoftmax(nn.Module):
+
+    def __init__(self, hard=True, **kwargs):
+        super().__init__()
+        self.hard = hard
+        self.kwargs = kwargs
+
+    def forward(self, inputs):
+        return nn.functional.gumbel_softmax(inputs, hard=self.hard, **self.kwargs)
+
+class MixedGumbelSoftmax(nn.Module):
+
+    def __init__(self, hard_rate=0.5, **kwargs):
+        super().__init__()
+        if 'hard' in kwargs:
+            del kwargs['hard']
+        self.kwargs = kwargs
+        self.hard_rate = hard_rate
+
+    def forward(self, inputs):
+        if self.hard_rate == 0:
+            return nn.functional.gumbel_softmax(inputs, hard=False, **self.kwargs)
+        if self.hard_rate == 1:
+            return nn.functional.gumbel_softmax(inputs, hard=True, **self.kwargs)
+        soft = nn.functional.gumbel_softmax(inputs, hard=False, **self.kwargs)
+        hard = nn.functional.gumbel_softmax(inputs, hard=True, **self.kwargs)
+        random = torch.rand(soft.shape[:-1]).to(soft.device)
+        random[random <= self.hard_rate] = 0
+        random[random > self.hard_rate] = 1
+        random = random.repeat(soft.shape[-1], 1, 1).permute(1, 2, 0)
+        return hard * random + soft * (1 - random)
+
 class Prenet(nn.Module):
 
     def __init__(self, in_dim, sizes=[256, 128]):
@@ -22,9 +54,7 @@ class BatchNormConv1d(nn.Module):
     def __init__(self, in_dim, out_dim, kernel_size, stride, padding,
                  activation=None):
         super(BatchNormConv1d, self).__init__()
-        self.conv1d = nn.Conv1d(in_dim, out_dim,
-                                kernel_size=kernel_size,
-                                stride=stride, padding=padding, bias=False)
+        self.conv1d = nn.Conv1d(in_dim, out_dim, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
         self.bn = nn.BatchNorm1d(out_dim)
         self.activation = activation
 
@@ -62,10 +92,7 @@ class CBHG(nn.Module):
         super(CBHG, self).__init__()
         self.in_dim = in_dim
         self.relu = nn.ReLU()
-        self.conv1d_banks = nn.ModuleList(
-            [BatchNormConv1d(in_dim, in_dim, kernel_size=k, stride=1,
-                             padding=k // 2, activation=self.relu)
-             for k in range(1, K + 1)])
+        self.conv1d_banks = nn.ModuleList([BatchNormConv1d(in_dim, in_dim, kernel_size=k, stride=1, padding=k // 2, activation=self.relu) for k in range(1, K + 1)])
         self.max_pool1d = nn.MaxPool1d(kernel_size=2, stride=1, padding=1)
 
         in_sizes = [K * in_dim] + projections[:-1]
@@ -180,9 +207,7 @@ class Tacotron2Encoder(nn.Module):
             convolutions.append(conv_layer)
         self.convolutions = nn.ModuleList(convolutions)
 
-        self.lstm = nn.LSTM(hparams.embedding_dim,
-                            int(hparams.embedding_dim / 2), 1,
-                            batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(hparams.embedding_dim, int(hparams.embedding_dim / 2), 1, batch_first=True, bidirectional=True)
 
     def forward(self, x, input_lengths):
         x = self.embedding(x).transpose(1, 2)
@@ -193,13 +218,11 @@ class Tacotron2Encoder(nn.Module):
         x = x.transpose(1, 2)
 
         x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True, enforce_sorted=False)
-
         self.lstm.flatten_parameters()
-        outputs, _ = self.lstm(x)
+        x, _ = self.lstm(x)
+        x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
 
-        outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
-
-        return outputs
+        return x
 
     def inference(self, x):
         for conv in self.convolutions:
@@ -212,6 +235,27 @@ class Tacotron2Encoder(nn.Module):
 
         return outputs
 
+class ContentEncoder(nn.Module):
+
+    def __init__(self, hparams):
+        super().__init__()
+
+        filters = [hparams.input_dim] + hparams.cnn.filters
+        convs = (BatchNormConv1d(filters[i], filters[i + 1], hparams.cnn.kernel_size, 1, hparams.cnn.kernel_size//2) for i in range(len(hparams.cnn.filters)))
+        self.convs = nn.Sequential(*convs)
+
+        self.gru = nn.GRU(input_size=hparams.cnn.filters[-1], hidden_size=hparams.gru_dim, bidirectional=True, batch_first=True)
+
+    def forward(self, inputs, input_lengths):
+        x = self.convs(inputs.transpose(1, 2)).transpose(1, 2)
+
+        x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True, enforce_sorted=False)
+        self.gru.flatten_parameters()
+        x, _ = self.gru(x)
+        x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
+
+        return x
+
 class ReferenceEncoder(nn.Module):
 
     def __init__(self, hparams):
@@ -221,15 +265,14 @@ class ReferenceEncoder(nn.Module):
         K = len(hparams.filters)
 
         filters = [1] + hparams.filters
-        convs = [nn.Conv2d(in_channels=filters[i], out_channels=filters[i + 1], kernel_size=hparams.kernel_size, stride=hparams.stride, padding=hparams.padding) 
-                for i in range(K)]
+        convs = [nn.Conv2d(in_channels=filters[i], out_channels=filters[i + 1], kernel_size=hparams.kernel_size, stride=hparams.stride, padding=hparams.padding) for i in range(K)]
         self.convs = nn.ModuleList(convs)
         self.bns = nn.ModuleList([nn.BatchNorm2d(num_features=hparams.filters[i]) for i in range(K)])
 
         self.gru = nn.GRU(input_size=hparams.filters[-1] * hparams.input_dim, hidden_size=hparams.gru_dim, bidirectional=True, batch_first=True)
         self.relu = nn.ReLU()
 
-    def forward(self, inputs):
+    def forward(self, inputs, input_lengths):
         N = inputs.size(0)
         out = inputs.view(N, 1, -1, self.input_dim)  # [N, 1, Ty, n_mels]
         for conv, bn in zip(self.convs, self.bns):
@@ -240,12 +283,16 @@ class ReferenceEncoder(nn.Module):
         out = out.transpose(1, 2)  # [N, Ty//2^K, 128, n_mels//2^K]
         T = out.size(1)
         N = out.size(0)
-        out = out.contiguous().view(N, T, -1)  # [N, Ty//2^K, 128*n_mels//2^K]
+        x = out.contiguous().view(N, T, -1)  # [N, Ty//2^K, 128*n_mels//2^K]
+
+        x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True, enforce_sorted=False)
 
         self.gru.flatten_parameters()
-        memory, _ = self.gru(out)
+        outputs, _ = self.gru(x)
 
-        return memory
+        outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
+
+        return outputs
 
 class Decoder(nn.Module):
 
