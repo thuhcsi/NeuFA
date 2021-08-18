@@ -26,8 +26,10 @@ class Options(dict):
 
 base = Options()
 base.max_epochs = 50000
-base.batch_size = 16
+base.batch_size = 64
 base.learning_rate = 1e-3
+base.scale_factor = 1
+base.batch_size *= base.scale_factor
 
 base.input.num_symbols = 84 + 1
 base.input.mfcc_dim = 39
@@ -39,13 +41,16 @@ base.text_encoder.cbhg.dim = 128
 base.text_encoder.cbhg.K = 16
 base.text_encoder.cbhg.projections = [128, 128]
 base.text_encoder.output_dim = base.text_encoder.cbhg.dim * 2
+base.text_encoder.cnn.kernel_size = 5
+base.text_encoder.cnn.num_layers = 3
 
 base.speech_encoder.input_dim = base.input.mfcc_dim
-base.speech_encoder.filters = [32, 32, 64, 64, 128, 128]
-base.speech_encoder.kernel_size = (3, 3)
-base.speech_encoder.stride = (1, 1)
-base.speech_encoder.padding = (1, 1)
-base.speech_encoder.gru_dim = 64
+base.speech_encoder.cnn.kernel_size = 5
+base.speech_encoder.cnn.filters = [512, 512, 512]
+#base.speech_encoder.filters = [32, 32, 64, 64, 128, 128]
+#base.speech_encoder.stride = (1, 1)
+#base.speech_encoder.kernel_size = (3, 3)
+base.speech_encoder.gru_dim = 8
 base.speech_encoder.output_dim = base.speech_encoder.gru_dim * 2
 
 base.attention.dim = 128
@@ -58,12 +63,15 @@ base.speech_decoder.input_dim = base.text_encoder.output_dim
 base.speech_decoder.lstm_dim = 128
 base.speech_decoder.output_dim = base.input.mfcc_dim
 
+base.speech_loss = 1e1
+base.text_loss = 1
+base.attention_loss = 1e3
+
 test = deepcopy(base)
-test.batch_size = 64
+test.batch_size = 32
 test.learning_rate = 1e-3
 test.text_decoder.input_dim = base.text_encoder.output_dim
-test.text_encoder.cnn.kernel_size = 5
-test.text_encoder.cnn.num_layers = 3
+test.text_encoder.embedding_dim = 256
 
 test2 = deepcopy(test)
 test2.batch_size = 256
