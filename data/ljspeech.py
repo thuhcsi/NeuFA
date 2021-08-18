@@ -34,12 +34,13 @@ def process_wav(file: Path, sample_rate=22050):
 
 class LJSpeech(torch.utils.data.Dataset):
 
-    def __init__(self, path):
+    def __init__(self, path, reduction: int = 1):
         super().__init__()
         self.path = Path(path)
         self.wavs = [i for i in Path(sys.argv[1]).rglob('*.wav')]
         self.texts = [Path(str(i)[:-3] + 'text.npy') for i in self.wavs]
         self.mfccs = [Path(str(i)[:-3] + 'mfcc.npy') for i in self.wavs]
+        self.reduction = reduction
 
     def __len__(self):
         return len(self.wavs)
@@ -48,11 +49,16 @@ class LJSpeech(torch.utils.data.Dataset):
         text = np.load(self.texts[index])
         mfcc = np.load(self.mfccs[index])
 
+        if mfcc.shape[0] % self.reduction != 0:
+            mfcc = np.concatenate([mfcc, np.zeros((self.reduction - mfcc.shape[0] % self.reduction, mfcc.shape[1]))])
+        if self.reduction > 1:
+            mfcc = mfcc.reshape(mfcc.shape[0] // self.reduction, mfcc.shape[1] * self.reduction)
+
         return text, mfcc
 
 if __name__ == '__main__':
     from tqdm.contrib.concurrent import process_map, thread_map
-    dataset = LJSpeech(sys.argv[1])
+    dataset = LJSpeech(sys.argv[1], reduction=4)
     lines = open(dataset.path / 'metadata.csv').readlines()
 
     if not dataset.texts[0].exists():
