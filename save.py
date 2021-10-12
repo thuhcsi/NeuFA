@@ -1,6 +1,7 @@
 import os
-import torch
+import json
 import logging
+import torch
 import numpy as np
 from datetime import datetime
 from pathlib import Path
@@ -40,29 +41,42 @@ class Save:
     def __init__(self, name='noname'):
 
         self.name = name + datetime.now().strftime("-%Y%m%d-%H%M%S")
-        self.path = os.path.join('save', self.name)
-        Path(self.path).mkdir(parents=True, exist_ok=True)
+        self.path = Path('save') / self.name
+        self.path.mkdir(parents=True, exist_ok=True)
 
         self.logger = logging.getLogger(self.name)
         options.logging = 'debug'
         enable_pretty_logging(options=options, logger=self.logger)
 
-        self.writer = SummaryWriter(os.path.join('/'.join(os.environ['ARNOLD_OUTPUT'].split('/')[:-3]), self.name))
+        self.writer = SummaryWriter(self.path)
 
-    def training_log(self, epoch, batch, step, loss):
-        self.logger.info('[%s] epoch %d batch %d step %d loss %f', self.name, epoch, batch, step, loss)
-        self.writer.add_scalar("training loss", loss, step)
+    def save_log(self, stage, epoch, batch, step, loss):
+        self.logger.info('[%s] %s epoch %d batch %d step %d loss %f', self.name, stage, epoch, batch, step, loss)
+        self.writer.add_scalar(f"{stage}/loss", loss, step)
 
-    def validation_log(self, epoch, step, loss):
-        self.logger.info('Validation epoch %d step %d loss %f', epoch, step, loss)
-        self.writer.add_scalar("validation loss", loss, epoch)
+    def save_parameters(self, hparams):
+        self.writer.add_text("hparams", json.dumps(hparams, indent=2))
 
     def save_model(self, model, filename):
         torch.save(model.state_dict(), os.path.join(self.path, filename))
 
-    def training_attention(self, step, w1, w2):
-        self.writer.add_image("w1", plot_alignment_to_numpy(w1.data.cpu().numpy()), step, dataformats='HWC')
-        self.writer.add_image("w2", plot_alignment_to_numpy(w2.data.cpu().numpy()), step, dataformats='HWC')
+    def save_boundary(self, stage, step, p_boundary, boundary, shape):
+        figure = np.zeros(shape)
+
+        for i in range(boundary.shape[0]):
+            for j, k in [(p_boundary[i][0], 0.7), (p_boundary[i][1], 0.7), (boundary[i][0], 1), (boundary[i][1], 1)]:
+                try:
+                    if j >= 0:
+                        #print(int(100 * j), i, k)
+                        figure[int(100 * j), i] = k
+                except:
+                    pass
+
+        self.writer.add_image(f"{stage}/boundary", plot_alignment_to_numpy(figure), step, dataformats='HWC')
+
+    def save_attention(self, stage, step, w1, w2):
+        self.writer.add_image(f"{stage}/w1", plot_alignment_to_numpy(w1.T.data.cpu().numpy()), step, dataformats='HWC')
+        self.writer.add_image(f"{stage}/w2", plot_alignment_to_numpy(w2.T.data.cpu().numpy()), step, dataformats='HWC')
 
 if __name__ == '__main__':
     save = Save()

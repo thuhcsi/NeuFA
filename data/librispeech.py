@@ -16,6 +16,7 @@ def process_text(g2p, path):
         phonemes = []
         for word in words:
             phonemes += g2p.convert(word)
+        phonemes = [i[:-1] if i.endswith(('0', '1', '2')) else i for i in phonemes]
         phonemes = [g2p.symbol2id[i] + 1 for i in phonemes if i in g2p.symbols]
         phonemes = np.array(phonemes)
         np.save(path.parent / (key + '.text.npy'), phonemes)

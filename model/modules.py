@@ -27,11 +27,23 @@ class MixedGumbelSoftmax(nn.Module):
             return nn.functional.gumbel_softmax(inputs, hard=True, **self.kwargs)
         soft = nn.functional.gumbel_softmax(inputs, hard=False, **self.kwargs)
         hard = nn.functional.gumbel_softmax(inputs, hard=True, **self.kwargs)
-        random = torch.rand(soft.shape[:-1]).to(soft.device)
+        random = torch.rand(soft.shape[:-1], device=soft.device)
         random[random <= self.hard_rate] = 0
         random[random > self.hard_rate] = 1
         random = random.repeat(soft.shape[-1], 1, 1).permute(1, 2, 0)
         return hard * random + soft * (1 - random)
+
+class LinearNorm(torch.nn.Module):
+    def __init__(self, in_dim, out_dim, bias=True, w_init_gain='linear'):
+        super(LinearNorm, self).__init__()
+        self.linear_layer = torch.nn.Linear(in_dim, out_dim, bias=bias)
+
+        torch.nn.init.xavier_uniform_(
+            self.linear_layer.weight,
+            gain=torch.nn.init.calculate_gain(w_init_gain))
+
+    def forward(self, x):
+        return self.linear_layer(x)
 
 class Prenet(nn.Module):
 
@@ -51,15 +63,28 @@ class Prenet(nn.Module):
 
 
 class BatchNormConv1d(nn.Module):
-    def __init__(self, in_dim, out_dim, kernel_size, stride, padding,
-                 activation=None):
-        super(BatchNormConv1d, self).__init__()
+    def __init__(self, in_dim, out_dim, kernel_size, stride, padding, activation=None):
+        super().__init__()
         self.conv1d = nn.Conv1d(in_dim, out_dim, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
         self.bn = nn.BatchNorm1d(out_dim)
         self.activation = activation
 
     def forward(self, x):
         x = self.conv1d(x)
+        if self.activation is not None:
+            x = self.activation(x)
+        return self.bn(x)
+
+class BatchNormConv2d(nn.Module):
+    def __init__(self, in_dim, out_dim, kernel_size, stride, padding,
+                 activation=None):
+        super().__init__()
+        self.conv2d = nn.Conv2d(in_dim, out_dim, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
+        self.bn = nn.BatchNorm2d(out_dim)
+        self.activation = activation
+
+    def forward(self, x):
+        x = self.conv2d(x)
         if self.activation is not None:
             x = self.activation(x)
         return self.bn(x)
@@ -245,6 +270,7 @@ class ContentEncoder(nn.Module):
         self.convs = nn.Sequential(*convs)
 
         self.gru = nn.GRU(input_size=hparams.cnn.filters[-1], hidden_size=hparams.gru_dim, bidirectional=True, batch_first=True)
+        self.gru2 = nn.GRU(input_size=hparams.gru_dim * 2, hidden_size=hparams.gru_dim, bidirectional=True, batch_first=True)
 
     def forward(self, inputs, input_lengths):
         x = self.convs(inputs.transpose(1, 2)).transpose(1, 2)
@@ -252,47 +278,10 @@ class ContentEncoder(nn.Module):
         x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True, enforce_sorted=False)
         self.gru.flatten_parameters()
         x, _ = self.gru(x)
+        x, _ = self.gru2(x)
         x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
 
         return x
-
-class ReferenceEncoder(nn.Module):
-
-    def __init__(self, hparams):
-        super().__init__()
-        self.input_dim = hparams.input_dim
-
-        K = len(hparams.filters)
-
-        filters = [1] + hparams.filters
-        convs = [nn.Conv2d(in_channels=filters[i], out_channels=filters[i + 1], kernel_size=hparams.kernel_size, stride=hparams.stride, padding=hparams.padding) for i in range(K)]
-        self.convs = nn.ModuleList(convs)
-        self.bns = nn.ModuleList([nn.BatchNorm2d(num_features=hparams.filters[i]) for i in range(K)])
-
-        self.gru = nn.GRU(input_size=hparams.filters[-1] * hparams.input_dim, hidden_size=hparams.gru_dim, bidirectional=True, batch_first=True)
-        self.relu = nn.ReLU()
-
-    def forward(self, inputs, input_lengths):
-        N = inputs.size(0)
-        out = inputs.view(N, 1, -1, self.input_dim)  # [N, 1, Ty, n_mels]
-        for conv, bn in zip(self.convs, self.bns):
-            out = conv(out)
-            out = bn(out)
-            out = self.relu(out)  # [N, 128, Ty//2^K, n_mels//2^K]
-
-        out = out.transpose(1, 2)  # [N, Ty//2^K, 128, n_mels//2^K]
-        T = out.size(1)
-        N = out.size(0)
-        x = out.contiguous().view(N, T, -1)  # [N, Ty//2^K, 128*n_mels//2^K]
-
-        x = nn.utils.rnn.pack_padded_sequence(x, input_lengths, batch_first=True, enforce_sorted=False)
-
-        self.gru.flatten_parameters()
-        outputs, _ = self.gru(x)
-
-        outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(outputs, batch_first=True)
-
-        return outputs
 
 class Decoder(nn.Module):
 
@@ -300,11 +289,98 @@ class Decoder(nn.Module):
         super().__init__()
 
         self.lstm = nn.LSTM(input_size=hparams.input_dim, hidden_size=hparams.lstm_dim, bidirectional=True, batch_first=True)
+        self.lstm2 = nn.LSTM(input_size=hparams.lstm_dim * 2, hidden_size=hparams.lstm_dim, bidirectional=True, batch_first=True)
         self.linear = nn.Linear(hparams.lstm_dim * 2, hparams.output_dim)
 
     def forward(self, inputs, input_lengths):
         x = nn.utils.rnn.pack_padded_sequence(inputs, input_lengths, batch_first=True, enforce_sorted=False)
         x, _ = self.lstm(x)
+        x, _ = self.lstm2(x)
         x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
         x = self.linear(x)
+        x = [x[i][:l] for i, l in enumerate(input_lengths)]
         return x
+
+class Aligner(nn.Module):
+
+    def __init__(self, hparams):
+        super().__init__()
+        self.max_frames = hparams.max_frames
+        #self.lstm = nn.GRU(input_size=6, hidden_size=hparams.lstm_dim, bidirectional=True, batch_first=True)
+        #self.lstm2 = nn.GRU(input_size=hparams.lstm_dim * 2, hidden_size=hparams.lstm_dim, bidirectional=True, batch_first=True)
+
+        #self.location_layer = LocationLayer(hparams.location_layer.attention_n_filters, hparams.location_layer.attention_kernel_size, hparams.location_layer.output_dim)
+        filters = [hparams.input_dim] + hparams.cnn.filters
+        #convs = (BatchNormConv1d(filters[i], filters[i + 1], hparams.cnn.kernel_size, 1, hparams.cnn.kernel_size//2) for i in range(len(hparams.cnn.filters)))
+        #self.convs = nn.Sequential(*convs)
+        convs = (BatchNormConv2d(filters[i], filters[i + 1], hparams.cnn.kernel_size, 1, tuple([i//2 for i in hparams.cnn.kernel_size])) for i in range(len(hparams.cnn.filters)))
+        self.convs = nn.Sequential(*convs)
+
+        self.linear = nn.Linear(filters[-1], 2)
+        self.softmax = nn.Softmax(-1)
+
+    def stack_attention(self, w1, w2):
+        w1 = [i.T for i in w1]
+        max_frames = max([i.shape[1] for i in w1])
+        w1 = [torch.cat([i, torch.zeros(i.shape[0], max_frames - i.shape[1], device=i.device)], dim=-1) for i in w1]
+        w2 = [torch.cat([i, torch.zeros(i.shape[0], max_frames - i.shape[1], device=i.device)], dim=-1) for i in w2]
+        w1 = nn.utils.rnn.pad_sequence(w1, batch_first=True)
+        w2 = nn.utils.rnn.pad_sequence(w2, batch_first=True)
+        accumulated_w1 = torch.cumsum(w1, -1)
+        accumulated_w2 = torch.cumsum(w2, -1)
+        accumulated_w1_backward = torch.cumsum(w1.flip(-1), -1).flip(-1)
+        accumulated_w2_backward = torch.cumsum(w2.flip(-1), -1).flip(-1)
+        #x = torch.stack([w1, w2, accumulated_w1, accumulated_w2, accumulated_w1_backward, accumulated_w2_backward], dim=-1).permute(1, 0, 3, 2)
+        #return torch.stack([self.convs(i) for i in x]).permute(1, 0, 3, 2)
+        x = torch.stack([w1, w2, accumulated_w1, accumulated_w2, accumulated_w1_backward, accumulated_w2_backward], dim=-1).permute(0, 3, 1, 2)
+        return self.convs(x).permute(0, 2, 3, 1)
+
+    def forward(self, texts, w1, w2, text_lengths, mfcc_lengths):
+        x = self.stack_attention(w1, w2)
+        x = torch.sigmoid(self.linear(x).transpose(-1, -2))
+        x = torch.cumsum(x, dim=-1)
+        #x = torch.stack([torch.cumsum(x[:,:,0,:], dim=-1), torch.cumsum(x[:,:,1,:].flip(-1), dim=-1).flip(-1)], dim=-2)
+        x = torch.tanh(x)
+        x = [b[:l1, :, :l2] for b, l1, l2 in zip(x, text_lengths, mfcc_lengths)]
+        return x
+
+class Predictor(nn.Module):
+
+    def __init__(self, hparams):
+        super().__init__()
+        self.max_frames = hparams.max_frames
+        self.lstm = nn.GRU(input_size=hparams.input_dim, hidden_size=hparams.lstm_dim, bidirectional=True, batch_first=True, dropout=0.5)
+        self.lstm2 = nn.GRU(input_size=hparams.lstm_dim * 2, hidden_size=hparams.lstm_dim, bidirectional=True, batch_first=True, dropout=0.5)
+        self.linear = nn.Linear(hparams.lstm_dim * 2, 2)
+        #self.location_layer = LocationLayer(hparams.location_layer.attention_n_filters, hparams.location_layer.attention_kernel_size, hparams.location_layer.output_dim)
+
+    def clip_score(self, score, text_lengths, mfcc_lengths):
+        middles = [torch.linspace(self.max_frames, self.max_frames + mfcc_lengths[i] - 1, text_length, dtype=torch.int) for i, text_length in enumerate(text_lengths)]
+        tops = [i + self.max_frames for i in middles]
+        bottoms = [i - self.max_frames for i in middles]
+
+        clipped_score = []
+        score = [torch.cat([torch.zeros(i.shape[0], self.max_frames, device=i.device), i, torch.zeros(i.shape[0], self.max_frames, device=i.device)], dim=-1) for i in score]
+        clipped_score = []
+        for i, top, bottom in zip(score, tops, bottoms):
+            clipped_score.append([torch.cat([j[b:t], t.to(j.device).unsqueeze(-1), b.to(j.device).unsqueeze(-1)]) for j, t, b in zip(i, top, bottom)])
+            clipped_score[-1] = torch.stack(clipped_score[-1], axis=0)
+        return clipped_score
+
+    def forward(self, texts, w1, w2, text_lengths, mfcc_lengths):
+        w1 = [i.T for i in w1]
+        clipped_w1 = self.clip_score(w1, text_lengths, mfcc_lengths)
+        clipped_w2 = self.clip_score(w2, text_lengths, mfcc_lengths)
+        clipped_score = [torch.cat([i, j], dim=-1) for i, j in zip(clipped_w1, clipped_w2)]
+        #clipped_score = [torch.cat([i, j], dim=-1) for i, j in zip(clipped_w1, clipped_w1)]
+
+        clipped_score = nn.utils.rnn.pad_sequence(clipped_score, batch_first=True)
+        x = torch.cat([texts, clipped_score], dim=-1)
+        x = nn.utils.rnn.pack_padded_sequence(x, text_lengths, batch_first=True, enforce_sorted=False)
+        x, _ = self.lstm(x)
+        x, _ = self.lstm2(x)
+        x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
+        boundries = torch.relu(self.linear(x))
+        #boundries = torch.cumsum(boundries, dim=-1)
+        boundries = [boundries[i, :l] for i, l in enumerate(text_lengths)]
+        return boundries
