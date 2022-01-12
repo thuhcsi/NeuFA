@@ -12,8 +12,8 @@ parser.add_argument('--gpu', default=0, type=int)
 parser.add_argument('--name', default=None)
 parser.add_argument('--load_model', default=None)
 parser.add_argument('--train_path', default=os.path.expanduser('~/LibriSpeech'))
-parser.add_argument('--dev_path', default=os.path.expanduser('~/BuckeyeTrain1'))
-parser.add_argument('--valid_path', default=os.path.expanduser('~/BuckeyeTest1'))
+parser.add_argument('--dev_path', default=os.path.expanduser('~/BuckeyeTrain'))
+parser.add_argument('--valid_path', default=os.path.expanduser('~/BuckeyeTest'))
 parser.add_argument('--model', default='temp', choices=['base', 'tep', 'mep', 'temp'])
 args = parser.parse_args()
 
@@ -46,10 +46,10 @@ dev_dataloader = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.bat
 valid_dataset = Buckeye(args.valid_path, reduction=hparams.reduction_rate)
 valid_dataloader = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
 
-dev_dataset = BuckeyePhoneme(args.dev_path, reduction=hparams.reduction_rate)
-dev_dataloader = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
-valid_dataset = BuckeyePhoneme(args.valid_path, reduction=hparams.reduction_rate)
-valid_dataloader = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+dev_dataset2 = BuckeyePhoneme(args.dev_path, reduction=hparams.reduction_rate)
+dev_dataloader2 = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+valid_dataset2 = BuckeyePhoneme(args.valid_path, reduction=hparams.reduction_rate)
+valid_dataloader2 = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
 
 if args.load_model:
     model_dict = model.state_dict()
@@ -82,10 +82,10 @@ def process(model, stage, data, step, batch):
             loss += hparams.attention_loss * attention_loss
         else:
             boundary_loss = model.boundary_loss(predicted[-1], data[2])
-            save.writer.add_scalar(f'{stage}/boundary loss', boundary_loss, dev_step)
+            save.writer.add_scalar(f'{stage}/boundary loss', boundary_loss, step)
             boundaries = model.extract_boundary(predicted[-1])
             boundary_mae = model.boundary_mae(boundaries, data[2])
-            save.writer.add_scalar(f'{stage}/boundary mae', boundary_mae, dev_step)
+            save.writer.add_scalar(f'{stage}/boundary mae', boundary_mae, step)
             loss += hparams.boundary_loss * boundary_loss
     if isinstance(model, NeuFA_TeP):
         tep_loss = model.length_loss(*predicted[4:6])
@@ -115,23 +115,25 @@ def process(model, stage, data, step, batch):
         save.save_model(model, f'{step // 1000}k')
 
 step = 1
-dev_step = 1
-dev2_step = 1
 for epoch in range(hparams.max_epochs):
     save.logger.info('Epoch %d', epoch)
 
     batch = 1
-    for data in train_dataloader:
-        break
-        process(model, 'training', data, step, batch)
-        step += 1
-        batch += 1
 
-    batch = 1
+    #for data in train_dataloader:
+    #    process(model, 'training', data, step, batch)
+    #    step += 1
+    #    batch += 1
+    #continue
+
     for data in dev_dataloader:
-        process(model, 'dev', data, dev_step, batch)
+        training_data = next(iter(train_dataloader))
+        dev_data2 = next(iter(dev_dataloader2))
+        process(model, 'training', training_data, step, batch)
+        process(model, 'dev', data, step, batch)
+        process(model, 'dev2', dev_data2, step, batch)
         batch += 1
-        dev_step += 1
+        step += 1
 
     with torch.no_grad():
         predicted = []

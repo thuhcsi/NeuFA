@@ -101,7 +101,7 @@ class NeuFA_base(nn.Module):
         boundaries = [i[i>-1] for i in boundaries]
         boundaries = torch.cat(boundaries)
         p_boundaries = torch.cat(p_boundaries)
-        print(torch.median(torch.abs(p_boundaries - boundaries)))
+        #print(torch.median(torch.abs(p_boundaries - boundaries)))
         return self.mae(p_boundaries, boundaries)
 
     def extract_boundary(self, p_boundaries, threshold=0.5):
