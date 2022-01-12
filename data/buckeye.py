@@ -357,6 +357,7 @@ if __name__ == '__main__':
     if not dataset.words[0].exists():
         texts = [i for i in dataset.segmented.rglob('*.words')]
         thread_map(partial(process_word, g2p), texts)
+        print('[Important] Now please run this script again to finish the preprocessing.')
         sys.exit()
 
     if not dataset.mfccs[0].exists():
