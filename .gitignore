@@ -2,3 +2,4 @@ __pycache__
 save
 *.sw*
 *.png
+*.pt
