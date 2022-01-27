@@ -27,7 +27,7 @@ class Options(dict):
 base = Options()
 base.max_epochs = 50000
 base.batch_size = 16
-base.learning_rate = 1e-3
+base.learning_rate = 1e-4
 base.reduction_rate = 1
 base.strategy = 'pretrain'
 

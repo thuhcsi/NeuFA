@@ -32,33 +32,37 @@ elif args.model == 'temp':
     from hparams import temp as hparams
     model = NeuFA_TeMP(hparams)
 
-if 'LJSpeech' in args.train_path:
-    from data.ljspeech import LJSpeech
-    train_dataset = LJSpeech(args.train_path, reduction=hparams.reduction_rate)
-elif 'LibriSpeech' in args.train_path:
-    from data.librispeech import LibriSpeech
-    train_dataset = LibriSpeech(args.train_path, reduction=hparams.reduction_rate)
-train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+if hparams.strategy != 'finetune':
+    if 'LJSpeech' in args.train_path:
+        from data.ljspeech import LJSpeech
+        train_dataset = LJSpeech(args.train_path, reduction=hparams.reduction_rate)
+    elif 'LibriSpeech' in args.train_path:
+        from data.librispeech import LibriSpeech
+        train_dataset = LibriSpeech(args.train_path, reduction=hparams.reduction_rate)
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
 
-from data.buckeye import Buckeye, BuckeyePhoneme
-dev_dataset = Buckeye(args.dev_path, reduction=hparams.reduction_rate)
-dev_dataloader = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
-valid_dataset = Buckeye(args.valid_path, reduction=hparams.reduction_rate)
-valid_dataloader = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+if hparams.strategy != 'pretrain':
+    from data.buckeye import Buckeye, BuckeyePhoneme
+    dev_dataset = Buckeye(args.dev_path, reduction=hparams.reduction_rate)
+    dev_dataloader = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+    valid_dataset = Buckeye(args.valid_path, reduction=hparams.reduction_rate)
+    valid_dataloader = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
 
-dev_dataset2 = BuckeyePhoneme(args.dev_path, reduction=hparams.reduction_rate)
-dev_dataloader2 = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
-valid_dataset2 = BuckeyePhoneme(args.valid_path, reduction=hparams.reduction_rate)
-valid_dataloader2 = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+if hparams.strategy == 'semi2':
+    dev_dataset2 = BuckeyePhoneme(args.dev_path, reduction=hparams.reduction_rate)
+    dev_dataloader2 = torch.utils.data.DataLoader(dev_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
+    valid_dataset2 = BuckeyePhoneme(args.valid_path, reduction=hparams.reduction_rate)
+    valid_dataloader2 = torch.utils.data.DataLoader(valid_dataset, batch_size=hparams.batch_size, shuffle=True, collate_fn=Collate(device), drop_last=True)
 
 if args.load_model:
-    model_dict = model.state_dict()
-    state_dict = torch.load(args.load_model)
-    state_dict = {k: v for k, v in state_dict.items() if not k.startswith('aligner.')}
-    model_dict.update(state_dict)
-    model.load_state_dict(model_dict)
+    #model_dict = model.state_dict()
+    #state_dict = torch.load(args.load_model)
+    #state_dict = {k: v for k, v in state_dict.items() if not k.startswith('aligner.')}
+    #model_dict.update(state_dict)
+    #model.load_state_dict(model_dict)
+    model.load_state_dict(torch.load(args.load_model, map_location='cpu'))
 
-model = model.to(device)
+model.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=hparams.learning_rate, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
 
 if args.name is None:
@@ -120,18 +124,26 @@ for epoch in range(hparams.max_epochs):
 
     batch = 1
 
-    #for data in train_dataloader:
-    #    process(model, 'training', data, step, batch)
-    #    step += 1
-    #    batch += 1
-    #continue
+    if hparams.strategy == 'pretrain':
+        for data in train_dataloader:
+            process(model, 'training', data, step, batch)
+            step += 1
+            batch += 1
+        continue
 
     for data in dev_dataloader:
-        training_data = next(iter(train_dataloader))
-        dev_data2 = next(iter(dev_dataloader2))
-        process(model, 'training', training_data, step, batch)
-        process(model, 'dev', data, step, batch)
-        process(model, 'dev2', dev_data2, step, batch)
+        if hparams.strategy == 'finetune':
+            process(model, 'dev', data, step, batch)
+        if hparams.strategy == 'semi':
+            training_data = next(iter(train_dataloader))
+            process(model, 'training', training_data, step, batch)
+            process(model, 'dev', data, step, batch)
+        if hparams.strategy == 'semi2':
+            training_data = next(iter(train_dataloader))
+            dev_data2 = next(iter(dev_dataloader2))
+            process(model, 'training', training_data, step, batch)
+            process(model, 'dev', data, step, batch)
+            process(model, 'dev2', dev_data2, step, batch)
         batch += 1
         step += 1
 
