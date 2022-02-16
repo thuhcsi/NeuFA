@@ -34,7 +34,7 @@ class NeuFA:
         phonemes = self.get_phonemes(words)
         phonemes = [j for i in phonemes for j in i]
         phonemes = np.array(phonemes)
-        return torch.IntTensor(phonemes, device=self.device)
+        return torch.IntTensor(phonemes).to(self.device)
 
     def load_wav(self, wav):
         if os.path.exists(wav):
@@ -47,7 +47,7 @@ class NeuFA:
         std = mfcc.std(axis=0, keepdims=False)
         mfcc -= mean
         mfcc /= std
-        return torch.FloatTensor(mfcc, device=self.device)
+        return torch.FloatTensor(mfcc).to(self.device)
 
     def extract_boundary(self, p_boundaries, threshold=0.5):
         result = []
@@ -64,28 +64,53 @@ class NeuFA:
         with torch.no_grad():
             _, _, w1, w2, _, _, _, _, boundaries = self.model(text, wav)
             boundaries = self.extract_boundary(boundaries)
-        return boundaries[0], w1[0].numpy(), w2[0].numpy()
+        return boundaries[0], w1[0].cpu().numpy(), w2[0].cpu().numpy()
 
 if __name__ == '__main__':
     import sys
+    from pathlib import Path
+    from functools import partial
+    from tqdm import tqdm
+    import argparse
 
-    neufa = NeuFA()
-    boundaries, w1, w2 = neufa.align(sys.argv[1], sys.argv[2])
-    words = neufa.get_words(sys.argv[1])
-    phonemes = neufa.get_phonemes(words)
-    start = 0
-    for word, phoneme in zip(words, phonemes):
-        if len(phoneme) > 0:
-            #l = np.min(boundaries[start:start+len(phoneme)])
-            #r = np.max(boundaries[start:start+len(phoneme)])
-            l = boundaries[start, 0]
-            r = boundaries[start+len(phoneme) - 1, 1]
-            t = r - l
-            print(word, l, r, '%.2f' % t)
-        else:
-            print(word, '-', '-')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--gpu', default=-1, type=int, help='The GPU to use. Default is using CPU.')
+    parser.add_argument('-m', '--load_model', default='neufa.pt', help='Path to exported NeuFA model. Default is neufa.pt.')
+    parser.add_argument('-t', '--input_text', default=None, help='Path to the text to align. Will be ignored when processing a folder.')
+    parser.add_argument('-w', '--input_wav', default=None, help='Path to the wave to align. Will be ignored when processing a folder.')
+    parser.add_argument('-d', '--input_folder', default=None, help='Path of a folder containing both the text and wave files to align.')
+    args = parser.parse_args()
 
-        for p, boundary in zip(phoneme, boundaries[start:start+len(phoneme)]):
-            print(neufa.g2p.id2symbol[p-1], boundary)
+    if args.gpu < 0:
+        neufa = NeuFA()
+    else:
+        neufa = NeuFA(device=f'cuda:{args.gpu}')
 
-        start += len(phoneme)
+    if args.input_folder:
+        texts = [i for i in Path(args.input_folder).rglob('*.txt')]
+        for text in tqdm(texts):
+            wav = text.parent / f'{text.stem}.wav'
+            boundaries, w_tts, w_asr = neufa.align(text, wav)
+            np.save(text.parent / f'{text.stem}.boundary.npy', boundaries)
+            #np.save(text.parent / f'{text.stem}.wasr.npy', w_asr)
+            #np.save(text.parent / f'{text.stem}.wtts.npy', w_tts)
+    else:
+        boundaries, w1, w2 = neufa.align(args.input_text, args.input_wav)
+        words = neufa.get_words(args.input_text)
+        phonemes = neufa.get_phonemes(words)
+        start = 0
+        for word, phoneme in zip(words, phonemes):
+            if len(phoneme) > 0:
+                #l = np.min(boundaries[start:start+len(phoneme)])
+                #r = np.max(boundaries[start:start+len(phoneme)])
+                l = boundaries[start, 0]
+                r = boundaries[start+len(phoneme) - 1, 1]
+                t = r - l
+                print(word, l, r, '%.2f' % t)
+            else:
+                print(word, '-', '-')
+
+            for p, boundary in zip(phoneme, boundaries[start:start+len(phoneme)]):
+                print(neufa.g2p.id2symbol[p-1], boundary)
+
+            start += len(phoneme)
