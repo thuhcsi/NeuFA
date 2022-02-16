@@ -5,4 +5,7 @@ from hparams import temp as hparams
 
 model = NeuFA_TeMP(hparams)
 model.load_state_dict(torch.load(sys.argv[1]))
-torch.save(model, sys.argv[2])
+if len(sys.argv) == 1:
+    torch.save(model, 'neufa.pt')
+else:
+    torch.save(model, sys.argv[2])
