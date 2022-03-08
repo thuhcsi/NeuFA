@@ -2,7 +2,6 @@ import os
 import torch
 import numpy as np
 import librosa
-from transformers import AutoTokenizer
 from g2p.en_us import G2P
 
 class NeuFA:
@@ -12,17 +11,14 @@ class NeuFA:
         self.model = torch.load(model_path, map_location=device)
         self.model.eval()
         self.g2p = G2P()
-        self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
-    def fit_to_bert(self, matrix, words):
-        word_flags = [i.isalpha() for i in words]
-        words = [i for i, flag in zip(words, word_flags) if flag]
+    def fit_to_word(self, matrix, words):
         phonemes = self.get_phonemes(words)
 
         result = []
         start = 0
         for word, phoneme in zip(words, phonemes):
-            if word.isalpha():
+            if len(phoneme) > 0:
                 result.append(np.mean(matrix[start:start+len(phoneme)], axis=0, keepdims=True))
                 start += len(phoneme)
             else:
@@ -34,8 +30,8 @@ class NeuFA:
         if os.path.exists(text):
             with open(text) as f:
                 text = f.readline().strip('\r\n').lower()
-        words = self.tokenizer.encode(text)[1:-1]
-        words = self.tokenizer.convert_ids_to_tokens(words)
+        text = ''.join([i for i in text if i in "abcedfghijklmnopqrstuvwxyz' "])
+        words = text.split(' ')
         return words
 
     def get_phonemes(self, words):
@@ -49,9 +45,6 @@ class NeuFA:
 
     def load_text(self, text):
         words = self.get_words(text)
-        word_flags = [i.isalpha() for i in words]
-        words = [i for i, flag in zip(words, word_flags) if flag]
-
         phonemes = self.get_phonemes(words)
         phonemes = [j for i in phonemes for j in i]
         phonemes = np.array(phonemes)
@@ -114,7 +107,7 @@ if __name__ == '__main__':
             words = neufa.get_words(text)
             boundaries, w_tts, w_asr = neufa.align(text, wav)
             #np.save(text.parent / f'{text.stem}.boundary.npy', boundaries)
-            np.save(text.parent / f'{text.stem}.wasr.npy', neufa.fit_to_bert(w_asr, words))
+            np.save(text.parent / f'{text.stem}.wasr.npy', neufa.fit_to_word(w_asr, words))
             #np.save(text.parent / f'{text.stem}.wtts.npy', w_tts)
     else:
         boundaries, w1, w2 = neufa.align(args.input_text, args.input_wav)
