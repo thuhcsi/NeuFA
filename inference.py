@@ -12,7 +12,7 @@ class NeuFA:
         self.model.eval()
         self.g2p = G2P()
 
-    def fit_to_word(self, matrix, words):
+    def fit_to_words(self, matrix, words):
         phonemes = self.get_phonemes(words)
 
         result = []
@@ -32,6 +32,8 @@ class NeuFA:
                 text = f.readline().strip('\r\n').lower()
         text = ''.join([i for i in text if i in "abcedfghijklmnopqrstuvwxyz' "])
         words = text.split(' ')
+        words = [i for i in words if i != '']
+
         return words
 
     def get_phonemes(self, words):
@@ -107,7 +109,7 @@ if __name__ == '__main__':
             words = neufa.get_words(text)
             boundaries, w_tts, w_asr = neufa.align(text, wav)
             #np.save(text.parent / f'{text.stem}.boundary.npy', boundaries)
-            np.save(text.parent / f'{text.stem}.wasr.npy', neufa.fit_to_word(w_asr, words))
+            np.save(text.parent / f'{text.stem}.wasr.npy', neufa.fit_to_words(w_asr, words))
             #np.save(text.parent / f'{text.stem}.wtts.npy', w_tts)
     else:
         boundaries, w1, w2 = neufa.align(args.input_text, args.input_wav)
