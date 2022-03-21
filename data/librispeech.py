@@ -26,7 +26,7 @@ def process_wav(file: Path):
     mfcc = librosa.feature.mfcc(y=waveform, sr=sample_rate, n_mfcc=13, hop_length=int(sample_rate/100), n_fft=int(sample_rate/40), fmax=8000)
     delta = librosa.feature.delta(mfcc, width=3, order=1)
     delta2 = librosa.feature.delta(mfcc, width=3, order=2)
-    np.save(file.parent / (file.name[:-3] + 'mfcc.npy'), np.concatenate([mfcc, delta, delta2]).T.astype(np.float32))
+    np.save(file.parent / f'{file.stem}.mfcc.npy', np.concatenate([mfcc, delta, delta2]).T.astype(np.float32))
 
 def get_mean_and_std(mfccs):
     mfccs = np.concatenate(mfccs, axis=0)
