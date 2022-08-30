@@ -1,5 +1,18 @@
 ## NeuFA: Neural network-based forced alignment with bidirectional attention mechanism
 
+### Please read this first
+
+> Well, it would be a superise to me if NeuFA (or any other FA model) predicts some insane boundaries.
+>
+> Like the paper said, the 50 ms tolerance accuracy of NeuFA is 95% at word level.
+It seems to be high. But in practice, for a sentence with 20 phonemes in example. The possibilty that there is a phoneme with a predicted boundary 50ms biased from the ground-truth is `1 - .95 ^ 20 = 64.15%`. Similarly, the possibilty that there is a phoneme with a predicted boundary 100ms biased from the ground-truth is `1 - .98 ^ 20 = 33.24%`.
+>
+> Also, NeuFA currently doesn't restrict the predicted boundaries to be nonoverlapping (we are working on this in NeuFA 2),
+which makes the situation even worse.
+>
+> So my opinion is NeuFA is not ready for production enviroments yet.
+But NeuFA could be used as a "soft" FA model which extracts the attention weights between the text and speech to map the information between them. And this is exactly why we propose NeuFA and how we use it in our other researches.
+
 ### Usage
 
 * Clone this repository and its submodules.
