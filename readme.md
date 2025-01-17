@@ -2,7 +2,7 @@
 
 ### Please read this first
 
-> Well, it would be a superise to me if NeuFA (or any other FA model) predicts some insane boundaries.
+> Well, it would not be a superise to me if NeuFA (or any other FA model) predicts some insane boundaries.
 >
 > Like the paper said, the 50 ms tolerance accuracy of NeuFA is 95% at word level.
 It seems to be high. But in practice, for a sentence with 20 phonemes in example. The possibilty that there is a phoneme with a predicted boundary 50ms biased from the ground-truth is `1 - .95 ^ 20 = 64.15%`. Similarly, the possibilty that there is a phoneme with a predicted boundary 100ms biased from the ground-truth is `1 - .98 ^ 20 = 33.24%`.
@@ -34,8 +34,8 @@ python -m data.librispeech /path/to/LibriSpeech
 * Run this command **twice** to preprocess the Buckeye corpus.
 
 ```shell
-python -m data.buckeye /path/to/LibriSpeech
-python -m data.buckeye /path/to/LibriSpeech
+python -m data.buckeye /path/to/Buckeye
+python -m data.buckeye /path/to/Buckeye
 ```
 * Split the training and test sets.
 
